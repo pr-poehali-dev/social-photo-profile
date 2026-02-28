@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Icon from "@/components/ui/icon";
 
 const IMAGES = {
@@ -75,9 +75,30 @@ const MESSAGES = [
 
 type Tab = "feed" | "search" | "messages" | "notifications" | "saved" | "profile";
 
+type Post = {
+  id: number;
+  user: { name: string; username: string; avatar: string; verified: boolean };
+  image: string;
+  caption: string;
+  likes: number;
+  comments: number;
+  time: string;
+  liked: boolean;
+  saved: boolean;
+};
+
+type Story = {
+  id: number;
+  name: string;
+  avatar: string;
+  viewed: boolean;
+  isMe?: boolean;
+  image?: string;
+};
+
 export default function Index() {
   const [activeTab, setActiveTab] = useState<Tab>("feed");
-  const [posts, setPosts] = useState(POSTS);
+  const [posts, setPosts] = useState<Post[]>(POSTS);
   const [users, setUsers] = useState(USERS);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeChat, setActiveChat] = useState<number | null>(null);
@@ -87,6 +108,67 @@ export default function Index() {
     2: [{ text: "Спасибо за лайк 😊", mine: false, time: "5 мин" }],
     3: [{ text: "Классное фото!", mine: false, time: "1 ч" }],
   });
+
+  // Publish modal
+  const [showPublishMenu, setShowPublishMenu] = useState(false);
+  const [publishMode, setPublishMode] = useState<"post" | "story" | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [caption, setCaption] = useState("");
+  const [stories, setStories] = useState<Story[]>(STORIES);
+  const [viewingStory, setViewingStory] = useState<Story | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = (mode: "post" | "story") => {
+    setPublishMode(mode);
+    setShowPublishMenu(false);
+    setSelectedImage(null);
+    setCaption("");
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setSelectedImage(url);
+    e.target.value = "";
+  };
+
+  const publishPost = () => {
+    if (!selectedImage) return;
+    const newPost: Post = {
+      id: Date.now(),
+      user: { name: "Вы", username: "my_profile", avatar: IMAGES.avatar1, verified: false },
+      image: selectedImage,
+      caption: caption || "Новая публикация 📸",
+      likes: 0,
+      comments: 0,
+      time: "только что",
+      liked: false,
+      saved: false,
+    };
+    setPosts(p => [newPost, ...p]);
+    setSelectedImage(null);
+    setCaption("");
+    setPublishMode(null);
+    setActiveTab("feed");
+  };
+
+  const publishStory = () => {
+    if (!selectedImage) return;
+    const newStory: Story = {
+      id: Date.now(),
+      name: "Ваша",
+      avatar: selectedImage,
+      viewed: false,
+      isMe: true,
+      image: selectedImage,
+    };
+    setStories(s => [newStory, ...s.filter(st => !st.isMe)]);
+    setSelectedImage(null);
+    setPublishMode(null);
+  };
 
   const toggleLike = (id: number) => {
     setPosts(p => p.map(post => post.id === id
@@ -155,8 +237,17 @@ export default function Index() {
           ))}
         </nav>
 
+        {/* Publish button desktop */}
+        <button
+          onClick={() => setShowPublishMenu(v => !v)}
+          className="w-full gradient-bg text-white py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 glow-purple hover:scale-105 transition-transform mb-4"
+        >
+          <Icon name="Plus" size={18} />
+          Создать публикацию
+        </button>
+
         {/* My profile mini */}
-        <div className="mt-6 p-3 glass rounded-xl flex items-center gap-3">
+        <div className="mt-2 p-3 glass rounded-xl flex items-center gap-3">
           <div className="story-ring w-10 h-10 flex-shrink-0">
             <img src={IMAGES.avatar1} className="w-full h-full rounded-full object-cover" />
           </div>
@@ -191,11 +282,26 @@ export default function Index() {
             <div className="max-w-lg mx-auto py-4 px-4 space-y-6 animate-fade-in">
               {/* Stories */}
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                {STORIES.map(story => (
-                  <div key={story.id} className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer">
+                {/* Add story button */}
+                <div
+                  className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer"
+                  onClick={() => openPicker("story")}
+                >
+                  <div className="w-[62px] h-[62px] rounded-full gradient-border relative flex items-center justify-center bg-white/5 border border-white/10">
+                    <Icon name="Plus" size={24} className="text-white/70" />
+                  </div>
+                  <span className="text-xs text-white/60">Добавить</span>
+                </div>
+
+                {stories.map(story => (
+                  <div
+                    key={story.id}
+                    className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer"
+                    onClick={() => setViewingStory(story)}
+                  >
                     <div className={`rounded-full p-[2px] ${story.viewed ? "bg-white/10" : "gradient-bg"}`}>
                       <div className="bg-[#0a0a12] rounded-full p-[2px]">
-                        <img src={story.avatar} className="w-14 h-14 rounded-full object-cover" />
+                        <img src={story.image || story.avatar} className="w-14 h-14 rounded-full object-cover" />
                       </div>
                     </div>
                     <span className="text-xs text-white/60 max-w-[60px] truncate">
@@ -599,6 +705,136 @@ export default function Index() {
           ))}
         </nav>
       </main>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* FAB + button */}
+      <div className="fixed bottom-24 md:bottom-8 right-6 z-40 flex flex-col items-end gap-3">
+        {/* Mini menu */}
+        {showPublishMenu && (
+          <div className="flex flex-col gap-2 items-end animate-scale-in">
+            <button
+              onClick={() => openPicker("story")}
+              className="flex items-center gap-3 glass border border-white/10 text-white px-4 py-3 rounded-2xl text-sm font-medium hover:bg-white/10 transition-colors shadow-xl"
+            >
+              Добавить историю
+              <span className="w-8 h-8 gradient-bg rounded-full flex items-center justify-center">
+                <Icon name="Clock" size={16} />
+              </span>
+            </button>
+            <button
+              onClick={() => openPicker("post")}
+              className="flex items-center gap-3 glass border border-white/10 text-white px-4 py-3 rounded-2xl text-sm font-medium hover:bg-white/10 transition-colors shadow-xl"
+            >
+              Опубликовать фото
+              <span className="w-8 h-8 gradient-bg rounded-full flex items-center justify-center">
+                <Icon name="Image" size={16} />
+              </span>
+            </button>
+          </div>
+        )}
+        <button
+          onClick={() => setShowPublishMenu(v => !v)}
+          className="w-14 h-14 gradient-bg rounded-full flex items-center justify-center shadow-2xl glow-purple pulse-glow transition-all duration-300"
+          style={{ transform: showPublishMenu ? "rotate(45deg)" : "rotate(0deg)" }}
+        >
+          <Icon name="Plus" size={26} className="text-white" />
+        </button>
+      </div>
+
+      {/* Publish post modal */}
+      {publishMode === "post" && selectedImage && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md glass border border-white/10 rounded-t-3xl md:rounded-3xl p-6 animate-slide-up">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Новая публикация</h3>
+              <button onClick={() => { setSelectedImage(null); setPublishMode(null); }} className="text-white/40 hover:text-white">
+                <Icon name="X" size={22} />
+              </button>
+            </div>
+            <img src={selectedImage} className="w-full aspect-square object-cover rounded-2xl mb-4" />
+            <div className="flex items-start gap-3 mb-5">
+              <img src={IMAGES.avatar1} className="w-9 h-9 rounded-full object-cover flex-shrink-0 mt-1" />
+              <textarea
+                value={caption}
+                onChange={e => setCaption(e.target.value)}
+                placeholder="Напишите подпись к фото..."
+                rows={3}
+                className="flex-1 bg-transparent text-white placeholder:text-white/30 focus:outline-none text-sm resize-none"
+              />
+            </div>
+            <button
+              onClick={publishPost}
+              className="w-full gradient-bg text-white py-3.5 rounded-2xl font-semibold text-sm glow-purple hover:scale-[1.02] transition-transform"
+            >
+              Опубликовать
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Publish story modal */}
+      {publishMode === "story" && selectedImage && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm glass border border-white/10 rounded-t-3xl md:rounded-3xl p-6 animate-slide-up">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Новая история</h3>
+              <button onClick={() => { setSelectedImage(null); setPublishMode(null); }} className="text-white/40 hover:text-white">
+                <Icon name="X" size={22} />
+              </button>
+            </div>
+            <div className="relative mx-auto w-48 aspect-[9/16] rounded-3xl overflow-hidden mb-5 shadow-2xl">
+              <img src={selectedImage} className="w-full h-full object-cover" />
+              <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.6))" }} />
+              <div className="absolute bottom-4 left-0 right-0 text-center">
+                <p className="text-white text-xs font-semibold">Ваша история</p>
+              </div>
+            </div>
+            <button
+              onClick={publishStory}
+              className="w-full gradient-bg text-white py-3.5 rounded-2xl font-semibold text-sm glow-purple hover:scale-[1.02] transition-transform"
+            >
+              Добавить в истории
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Story viewer */}
+      {viewingStory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md"
+          onClick={() => {
+            setStories(s => s.map(st => st.id === viewingStory.id ? { ...st, viewed: true } : st));
+            setViewingStory(null);
+          }}
+        >
+          <div className="relative w-full max-w-sm h-screen md:h-[90vh] md:max-h-[700px] flex flex-col">
+            {/* Progress bar */}
+            <div className="absolute top-4 left-4 right-4 h-1 bg-white/20 rounded-full z-10 overflow-hidden">
+              <div className="h-full gradient-bg rounded-full animate-[progress_4s_linear_forwards]" style={{ width: "100%" }} />
+            </div>
+            {/* Header */}
+            <div className="absolute top-10 left-4 right-4 flex items-center justify-between z-10">
+              <div className="flex items-center gap-2">
+                <img src={viewingStory.avatar} className="w-8 h-8 rounded-full object-cover border-2 border-white/40" />
+                <span className="text-white text-sm font-semibold">{viewingStory.name}</span>
+              </div>
+              <button className="text-white/70 hover:text-white">
+                <Icon name="X" size={22} />
+              </button>
+            </div>
+            <img src={viewingStory.image || viewingStory.avatar} className="w-full h-full object-cover md:rounded-3xl" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
